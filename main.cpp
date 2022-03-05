@@ -2,7 +2,6 @@
 #include <iostream>
 #include <string>
 //for exec command
-#include <sstream>
 #include <memory>
 #include <stdexcept>
 #include <array>
@@ -13,44 +12,71 @@ using std::cout;
 using std::cin;
 using std::endl;
 
-string exec(const char* cmd) {
+string exec(const char* cmd, const string& error_message="Error!") {
     std::array<char, 128> buffer;
-    string result;
-    std::shared_ptr<FILE> pipe(popen(cmd, "r"), pclose);
+    std::string result;
+
+    auto pipe = popen(cmd, "r"); // get rid of shared_ptr
+
     if (!pipe) throw std::runtime_error("popen() failed!");
-    while (!feof(pipe.get())) {
-        if (fgets(buffer.data(), 128, pipe.get()) != nullptr)
+
+    while (!feof(pipe)) {
+        if (fgets(buffer.data(), 128, pipe) != nullptr)
             result += buffer.data();
     }
+
+    auto rc = pclose(pipe);
+
+    if (rc != EXIT_SUCCESS) { // == 0
+        throw std::runtime_error(error_message);
+    }
     return result;
+}
+void exec_print(const char* cmd, const string& error_message="Error!") {
+    std::array<char, 64> buffer;
+    string result;
+
+    auto pipe = popen(cmd, "r"); // get rid of shared_ptr
+
+    if (!pipe) throw std::runtime_error("popen() failed!");
+
+    while (!feof(pipe)) {
+        if (fgets(buffer.data(), 64, pipe) != nullptr) {
+            result += buffer.data();
+            cout << result;
+        }
+    }
+
+    auto rc = pclose(pipe);
+
+    if (rc != EXIT_SUCCESS) { // == 0
+        throw std::runtime_error(error_message);
+    }
 }
 
 int main(){
 
-    std::ostringstream oss;
+    string cmd;
     //get web url from user
     cout << "Enter a web url: ";
     string url;
     cin >> url;
-    oss << "yt-dlp ";
-    oss << "-F ";
-    oss << url;
-    system(oss.str().c_str());
+    cmd = "yt-dlp -F " + url;
+    cout.flush();
+    exec_print(cmd.c_str());
     //ask format from user
-    cout << "Enter a format: \n";
-    cout << "Ex. sb0+251+313\n";
-    cout << "Ex. 251+313\n";
-    cout << "Press enter for the best format\n";
+    cout << "Enter a format: \n"
+         << "Ex. sb0+251+313\n"
+         << "Ex. 251+313\n"
+         << "Press enter for the best format\n";
     string format;
     cin.ignore();
     std::getline(cin, format);
     if(format.empty()){
         format = "sb0+bestvideo+bestaudio";
     }
-    oss.str("");
-    oss.clear();
-    oss << "yt-dlp --list-subs " << url;
-    system(oss.str().c_str());
+    cmd = "yt-dlp --list-subs " + url;
+    exec_print(cmd.c_str());
     cout << "Do you want to download subtitles? (y/N) ";
     string subs;
     std::getline(cin, subs);
@@ -62,22 +88,16 @@ int main(){
         cout << "Ex. en-CA,ja\n";
         string sub;
         std::getline(cin, sub);
-        oss.str("");
-        oss.clear();
-        oss<<"yt-dlp -f " <<format <<" --merge-output-format mkv --sub-langs "<<sub<<" --embed-subs --embed-thumbnail -o %\\(title\\)s " << url;
-        system(oss.str().c_str());
+        cmd = "yt-dlp -f " + format + " --merge-output-format mkv --sub-langs " +sub + " --embed-subs --embed-thumbnail -o %\\(title\\)s " + url;
+        exec_print(cmd.c_str());
     }
     else{
-        oss.str("");
-        oss.clear();
-        oss<<"yt-dlp -f " <<format <<" --merge-output-format mkv --embed-thumbnail -o %\\(title\\)s " << url;
-        system(oss.str().c_str());
+        cmd = "yt-dlp -f " + format + " --merge-output-format mkv --embed-thumbnail -o %\\(title\\)s " + url;
+        exec_print(cmd.c_str());
     }
-    oss.str("");
-    oss.clear();
-    oss << "yt-dlp -o %\\(title\\)s --get-filename " << url;
+    cmd = "yt-dlp -o %\\(title\\)s --get-filename " + url;
     string filename;
-    filename = exec(oss.str().c_str());
+    filename = exec(cmd.c_str());
     string path;
     path = exec("pwd");
     path[path.size()-1] = '/';
@@ -90,12 +110,9 @@ int main(){
         open = "Y";
     }
     if(open == "Y"||open == "y"){
-        oss.str("");
-        oss.clear();
-        oss <<"mpv --profile=svp " <<"\""<< path << filename << ".mkv"<<"\"";
-        system(oss.str().c_str());
+        cmd = "mpv \"" + path + filename + ".mkv\"";
+        exec_print(cmd.c_str());
     }
-    oss.clear();
 
     return 0;
 }
